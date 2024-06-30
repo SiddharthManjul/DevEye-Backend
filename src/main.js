@@ -13,6 +13,9 @@ import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { createRetrievalChain } from "langchain/chains/retrieval";
 
+import promptSync from 'prompt-sync';
+const promptFromTerminal = promptSync({sigint: true});
+
 // Model Initialization
 const model = new ChatGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -29,11 +32,15 @@ const parser = new StringOutputParser();
 // const regexCodeBlockParser = new RegexParser(codeBlockRegex, 1);
 
 // Custom Regex Parser
-// const parseCodeBlockUsingRegex = (text) => {
-//   const codeBlockRegex = /```(.*?)```/s;
-//   const match = text.match(codeBlockRegex);
-//   return match ? match[1].trim() : "No code block found";
-// };
+const parseCodeBlockUsingRegex = (text) => {
+  const codeBlockRegex = /```(.*?)```/s;
+  const match = text.match(codeBlockRegex);
+  if (match) {
+    // Replace \n with actual newline characters
+    return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
+  }
+  return "No code block found";
+};
 
 // Prompt Template
 const prompt = ChatPromptTemplate.fromMessages([
@@ -45,7 +52,7 @@ const prompt = ChatPromptTemplate.fromMessages([
 ]);
 
 // Document Loader
-const loader = new CheerioWebBaseLoader("https://www.rust-lang.org/");
+const loader = new CheerioWebBaseLoader("https://doc.rust-lang.org/book/ch01-01-installation.html");
 
 const docs = await loader.load();
 
@@ -72,6 +79,8 @@ const retriever = vecotrStore.asRetriever({
     k: 0
 });
 
+const input = promptFromTerminal("How can I help you? ");
+
 // Runner Function
 const run = async () => {
   // const chain = prompt.pipe(model);
@@ -88,15 +97,16 @@ const run = async () => {
   });
 
   const retrievedResponse = await retrievalChain.invoke({
-    input: "What is Rust?",
+    input: input,
   });
 
   const response = JSON.stringify(retrievedResponse, null, 2);
+  console.log(response);
 
-  //   const message = response.text;
+  // const message = retrievedResponse;
 
-  //   const parsedResponse = message;
-  console.log(`\n${response}\n`);
+  const parsedResponse = parseCodeBlockUsingRegex(response);
+  console.log(`\n${parsedResponse}\n`);
 };
 
 run();
