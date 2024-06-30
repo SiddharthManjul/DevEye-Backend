@@ -13,8 +13,11 @@ import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { createRetrievalChain } from "langchain/chains/retrieval";
 
-import promptSync from 'prompt-sync';
-const promptFromTerminal = promptSync({sigint: true});
+import { compile } from "html-to-text";
+import { RecursiveUrlLoader } from "@langchain/community/document_loaders/web/recursive_url";
+
+import promptSync from "prompt-sync";
+const promptFromTerminal = promptSync({ sigint: true });
 
 // Model Initialization
 const model = new ChatGoogleGenerativeAI({
@@ -33,13 +36,26 @@ const parser = new StringOutputParser();
 
 // Custom Regex Parser
 const parseCodeBlockUsingRegex = (text) => {
-  const codeBlockRegex = /```(.*?)```/s;
-  const match = text.match(codeBlockRegex);
-  if (match) {
-    // Replace \n with actual newline characters
-    return match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
+  const codeBlockRegex = /```(.*?)```/gs;
+  const matches = [];
+  let match;
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    matches.push(match[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').trim());
   }
-  return "No code block found";
+  return matches.length > 0 ? matches : null;
+};
+
+// Function to format content
+const formatContent = (text) => {
+  const codeBlockRegex = /```(.*?)```/gs;
+  return text.replace(
+    codeBlockRegex,
+    (_, code) =>
+      `\nCode Snippet:\n${code
+        .replace(/\\n/g, "\n")
+        .replace(/\\"/g, '"')
+        .trim()}\n`
+  );
 };
 
 // Prompt Template
@@ -52,9 +68,21 @@ const prompt = ChatPromptTemplate.fromMessages([
 ]);
 
 // Document Loader
-const loader = new CheerioWebBaseLoader("https://doc.rust-lang.org/book/ch01-01-installation.html");
+const loader = new CheerioWebBaseLoader(
+  "https://doc.rust-lang.org/book/ch01-02-hello-world.html"
+);
 
-const docs = await loader.load();
+const url = "https://doc.rust-lang.org/book/";
+
+const compiledConvert = compile({ wordwrap: 130 }); // returns (text: string) => string;
+
+const recursiveLoader = new RecursiveUrlLoader(url, {
+  extractor: compiledConvert,
+  maxDepth: 1,
+  excludeDirs: ["/docs/api/"],
+});
+
+const docs = await recursiveLoader.load();
 
 const splitter = new RecursiveCharacterTextSplitter({
   chunkSize: 2000,
@@ -76,8 +104,23 @@ const vecotrStore = await MemoryVectorStore.fromDocuments(
 
 // Retrieve Data
 const retriever = vecotrStore.asRetriever({
-    k: 0
+  k: 0,
 });
+
+// Output Formatting
+const isCode = (text) => {
+  const codePatterns = [
+    /^(\$|>)/,
+    /^#!/,
+    /;$/,
+    /\bfunction\b/,
+    /\bconst\b/,
+    /\blet\b/,
+    /\bvar\b/,
+  ];
+
+  return codePatterns.some((pattern) => pattern.test(text));
+};
 
 const input = promptFromTerminal("How can I help you? ");
 
@@ -101,12 +144,20 @@ const run = async () => {
   });
 
   const response = JSON.stringify(retrievedResponse, null, 2);
-  console.log(response);
+  // console.log(response);
 
   // const message = retrievedResponse;
 
-  const parsedResponse = parseCodeBlockUsingRegex(response);
-  console.log(`\n${parsedResponse}\n`);
+  const formattedResponse = formatContent(response);
+  // console.log(`\n${formattedResponse}\n`);
+
+  // Extract the answer
+  const responseObject = JSON.parse(response);
+  const answer = responseObject.answer;
+
+  // Print the answer in green color
+  const green = '\x1b[32m%s\x1b[0m';
+  console.log(green, `\n${answer}\n`);
 };
 
 run();
