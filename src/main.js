@@ -61,7 +61,7 @@ const formatContent = (text) => {
 // Prompt Template
 const prompt = ChatPromptTemplate.fromMessages([
   `
-    Answer the User Question.
+    Answer the User Question. Use the context provided only. If nothing found tell them politely that you don't have this information available
     Context: {context}
     Question: {input}    
 `,
@@ -72,14 +72,14 @@ const loader = new CheerioWebBaseLoader(
   "https://doc.rust-lang.org/book/ch01-02-hello-world.html"
 );
 
-const url = "https://doc.rust-lang.org/book/";
+const url = "https://nextjs.org/";
 
-const compiledConvert = compile({ wordwrap: 130 }); // returns (text: string) => string;
+const compiledConvert = compile({ wordwrap: 3000 }); // returns (text: string) => string;
 
 const recursiveLoader = new RecursiveUrlLoader(url, {
   extractor: compiledConvert,
-  maxDepth: 1,
-  excludeDirs: ["/docs/api/"],
+  maxDepth: 100,
+  excludeDirs: ["https://doc.rust-lang.org/book/title-page.html", "https://doc.rust-lang.org/book/foreword.html"],
 });
 
 const docs = await recursiveLoader.load();
